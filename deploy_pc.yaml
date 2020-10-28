@@ -1,0 +1,485 @@
+{
+    "kind": "List",
+    "apiVersion": "v1",
+    "metadata": {},
+    "items": [
+        {
+            "apiVersion": "v1",
+            "data": {
+                "admin": "YWRtaW4=",
+                "n1qNHQWv": "Y2x1c3RlcnBhc3N3b3Jk",
+                "useryyO": "Y2x1c3RlcnVzZXI="
+            },
+            "kind": "Secret",
+            "metadata": {
+                "annotations": {
+                    "description": "Credentials used in broker config. Default values are admin(AMQ_USER and AMQ_PASSWORD), clusteruser(AMQ_CLUSTER_USER), clusterpassword(AMQ_CLUSTER_PASSWORD)."
+                },
+                "labels": {
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "amq-credential-secret"
+            },
+            "type": "Opaque"
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "ServiceAccount",
+            "metadata": {
+                "labels": {
+                    "app": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "application0-service-account"
+            }
+        },
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1beta1",
+            "kind": "Role",
+            "metadata": {
+                "labels": {
+                    "app": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "application0-role"
+            },
+            "rules": [
+                {
+                    "apiGroups": [
+                        ""
+                    ],
+                    "resources": [
+                        "endpoints"
+                    ],
+                    "verbs": [
+                        "create",
+                        "delete",
+                        "deletecollection",
+                        "get",
+                        "list",
+                        "patch",
+                        "update",
+                        "watch"
+                    ]
+                },
+                {
+                    "apiGroups": [
+                        ""
+                    ],
+                    "resources": [
+                        "namespaces"
+                    ],
+                    "verbs": [
+                        "get",
+                        "list"
+                    ]
+                }
+            ]
+        },
+        {
+            "apiVersion": "rbac.authorization.k8s.io/v1beta1",
+            "kind": "RoleBinding",
+            "metadata": {
+                "labels": {
+                    "app": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "application0-role-binding"
+            },
+            "roleRef": {
+                "apiGroup": "rbac.authorization.k8s.io",
+                "kind": "Role",
+                "name": "application0-role"
+            },
+            "subjects": [
+                {
+                    "kind": "ServiceAccount",
+                    "name": "application0-service-account"
+                }
+            ]
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "description": "The broker's headless, non load balanced service"
+                },
+                "labels": {
+                    "app": "application0",
+                    "application": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "amq0-amq-headless"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "ports": [
+                    {
+                        "name": "all",
+                        "port": 61616,
+                        "protocol": "TCP",
+                        "targetPort": 61616
+                    },
+                    {
+                        "name": "console-jolokia",
+                        "port": 8161,
+                        "protocol": "TCP",
+                        "targetPort": 8161
+                    },
+                    {
+                        "name": "jolokia",
+                        "port": 8778,
+                        "protocol": "TCP",
+                        "targetPort": 8778
+                    },
+                    {
+                        "name": "amqp",
+                        "port": 5672,
+                        "protocol": "TCP",
+                        "targetPort": 5672
+                    },
+                    {
+                        "name": "mqtt",
+                        "port": 1883,
+                        "protocol": "TCP",
+                        "targetPort": 1883
+                    },
+                    {
+                        "name": "stomp",
+                        "port": 61613,
+                        "protocol": "TCP",
+                        "targetPort": 61613
+                    }
+                ],
+                "publishNotReadyAddresses": true,
+                "selector": {
+                    "deploymentConfig": "application0-amq"
+                },
+                "type": "ClusterIP"
+            }
+        },
+        {
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+                "annotations": {
+                    "description": "The JGroups ping port for clustering.",
+                    "service.alpha.kubernetes.io/tolerate-unready-endpoints": "true"
+                },
+                "labels": {
+                    "application": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "application0-ping"
+            },
+            "spec": {
+                "clusterIP": "None",
+                "ports": [
+                    {
+                        "port": 8888,
+                        "targetPort": 8888
+                    }
+                ],
+                "selector": {
+                    "deploymentConfig": "application0-amq"
+                }
+            }
+        },
+        {
+            "apiVersion": "apps/v1beta1",
+            "kind": "StatefulSet",
+            "metadata": {
+                "annotations": {
+                    "alpha.image.policy.openshift.io/resolve-names": "*",
+                    "statefulsets.kubernetes.io/drainer-pod-template": "{\n  \"metadata\": {\n    \"labels\": {\n      \"app\": \"application0-amq-drainer\"\n    }\n  },\n  \"spec\": {\n    \"serviceAccount\": \"application0-service-account\",\n    \"serviceAccountName\": \"application0-service-account\",\n    \"terminationGracePeriodSeconds\": 5,\n    \"containers\": [\n      {\n        \"env\": [\n          {\n            \"name\": \"APPLICATION_NAME\",\n            \"value\": \"application0\"\n          },\n          {\n            \"name\": \"PING_SVC_NAME\",\n            \"value\": \"ping\"\n          },\n          {\n            \"name\": \"AMQ_EXTRA_ARGS\",\n            \"value\": \"--no-autotune\"\n          },\n          {\n            \"name\": \"AMQ_USER\",\n            \"valueFrom\": {\n              \"secretKeyRef\": {\n                \"name\": \"amq-credential-secret\",\n                \"key\": \"admin\"\n              }\n            }\n          },\n          {\n            \"name\": \"AMQ_PASSWORD\",\n            \"valueFrom\": {\n              \"secretKeyRef\": {\n                \"name\": \"amq-credential-secret\",\n                \"key\": \"admin\"\n              }\n            }\n          },\n          {\n            \"name\": \"AMQ_ROLE\",\n            \"value\": \"admin\"\n          },\n          {\n            \"name\": \"AMQ_NAME\",\n            \"value\": \"amq0\"\n          },\n          {\n            \"name\": \"AMQ_TRANSPORTS\",\n            \"value\": \"openwire,amqp,stomp,mqtt,hornetq\"\n          },\n          {\n            \"name\": \"AMQ_QUEUES\",\n            \"value\": \"\"\n          },\n          {\n            \"name\": \"AMQ_ADDRESSES\",\n            \"value\": \"\"\n          },\n          {\n            \"name\": \"AMQ_GLOBAL_MAX_SIZE\",\n            \"value\": \"100 gb\"\n          },\n          {\n            \"name\": \"AMQ_ALLOW_ANONYMOUS\",\n            \"value\": \"${AMQ_ALLOW_ANONYMOUS}\"\n          },\n          {\n            \"name\": \"AMQ_DATA_DIR\",\n            \"value\": \"/opt/amq/data\"\n          },\n          {\n            \"name\": \"AMQ_DATA_DIR_LOGGING\",\n            \"value\": \"true\"\n          },\n          {\n            \"name\": \"AMQ_CLUSTERED\",\n            \"value\": \"true\"\n          },\n          {\n            \"name\": \"AMQ_REPLICAS\",\n            \"value\": \"2\"\n          },\n          {\n            \"name\": \"AMQ_CLUSTER_USER\",\n            \"valueFrom\": {\n              \"secretKeyRef\": {\n                \"name\": \"amq-credential-secret\",\n                \"key\": \"useryyO\"\n              }\n            }\n          },\n          {\n            \"name\": \"AMQ_CLUSTER_PASSWORD\",\n            \"valueFrom\": {\n              \"secretKeyRef\": {\n                \"name\": \"amq-credential-secret\",\n                \"key\": \"n1qNHQWv\"\n              }\n            }\n          },\n          {\n            \"name\": \"POD_NAMESPACE\",\n            \"valueFrom\": {\n              \"fieldRef\": {\n                \"fieldPath\": \"metadata.namespace\"\n              }\n            }\n          },\n          {\n            \"name\": \"OPENSHIFT_DNS_PING_SERVICE_PORT\",\n            \"value\": \"8888\"\n          }\n        ],\n        \"image\": \"quay.io/hgao/amq-openshift-image:0.2.0\",\n        \"name\": \"application0-amq\",\n\n        \"command\": [\"/bin/sh\", \"-c\", \"echo \\\"Starting the drainer\\\" ; /opt/amq/bin/drain.sh; echo \\\"Drain completed! Exit code $?\\\"\"],\n        \"volumeMounts\": [\n          {\n            \"name\": \"application0-amq-pvol\",\n            \"mountPath\": \"/opt/amq/data\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+                },
+                "labels": {
+                    "application": "application0",
+                    "template": "activemq-artemis-persistence-clustered",
+                    "xpaas": "1.0"
+                },
+                "name": "application0-amq"
+            },
+            "spec": {
+                "podManagementPolicy": "OrderedReady",
+                "replicas": "2",
+                "selector": {
+                    "matchLabels": {
+                        "app": "application0-amq"
+                    }
+                },
+                "serviceName": "amq0-amq-headless",
+                "strategy": {
+                    "rollingParams": {
+                        "maxSurge": 0
+                    },
+                    "type": "Rolling"
+                },
+                "template": {
+                    "metadata": {
+                        "labels": {
+                            "app": "application0-amq",
+                            "application": "application0",
+                            "deploymentConfig": "application0-amq"
+                        },
+                        "name": "application0-amq"
+                    },
+                    "spec": {
+                        "containers": [
+                            {
+                                "env": [
+                                    {
+                                        "name": "APPLICATION_NAME",
+                                        "value": "application0"
+                                    },
+                                    {
+                                        "name": "PING_SVC_NAME",
+                                        "value": "ping"
+                                    },
+                                    {
+                                        "name": "AMQ_USER",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "key": "admin",
+                                                "name": "amq-credential-secret"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "AMQ_PASSWORD",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "key": "admin",
+                                                "name": "amq-credential-secret"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "AMQ_ROLE",
+                                        "value": "admin"
+                                    },
+                                    {
+                                        "name": "AMQ_NAME",
+                                        "value": "amq0"
+                                    },
+                                    {
+                                        "name": "AMQ_TRANSPORTS",
+                                        "value": "openwire,amqp,stomp,mqtt,hornetq"
+                                    },
+                                    {
+                                        "name": "AMQ_QUEUES",
+                                        "value": ""
+                                    },
+                                    {
+                                        "name": "AMQ_ADDRESSES",
+                                        "value": ""
+                                    },
+                                    {
+                                        "name": "AMQ_GLOBAL_MAX_SIZE",
+                                        "value": "100 gb"
+                                    },
+                                    {
+                                        "name": "AMQ_REQUIRE_LOGIN",
+                                        "value": ""
+                                    },
+                                    {
+                                        "name": "AMQ_DATA_DIR",
+                                        "value": "/opt/amq/data"
+                                    },
+                                    {
+                                        "name": "AMQ_DATA_DIR_LOGGING",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "name": "AMQ_CLUSTERED",
+                                        "value": "true"
+                                    },
+                                    {
+                                        "name": "AMQ_REPLICAS",
+                                        "value": "2"
+                                    },
+                                    {
+                                        "name": "AMQ_CLUSTER_USER",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "key": "useryyO",
+                                                "name": "amq-credential-secret"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "AMQ_CLUSTER_PASSWORD",
+                                        "valueFrom": {
+                                            "secretKeyRef": {
+                                                "key": "n1qNHQWv",
+                                                "name": "amq-credential-secret"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "AMQ_EXTRA_ARGS",
+                                        "value": "--no-autotune"
+                                    },
+                                    {
+                                        "name": "AMQ_ANYCAST_PREFIX",
+                                        "value": ""
+                                    },
+                                    {
+                                        "name": "AMQ_MULTICAST_PREFIX",
+                                        "value": ""
+                                    },
+                                    {
+                                        "name": "POD_NAMESPACE",
+                                        "valueFrom": {
+                                            "fieldRef": {
+                                                "fieldPath": "metadata.namespace"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "name": "AMQ_ENABLE_METRICS_PLUGIN",
+                                        "value": "false"
+                                    },
+                                    {
+                                        "name": "AMQ_JOURNAL_TYPE",
+                                        "value": "nio"
+                                    },
+                                    {
+                                        "name": "APPLY_RULE",
+                                        "value": "merge_all"
+                                    },
+                                    {
+                                        "name": "TUNE_PATH",
+                                        "value": "/yacfg_etc"
+                                    }
+                                ],
+                                "image": "quay.io/hgao/amq-openshift-image:0.2.0",
+                                "name": "application0-amq",
+                                "ports": [
+                                    {
+                                        "containerPort": 8161,
+                                        "name": "console-jolokia",
+                                        "protocol": "TCP"
+                                    },
+                                    {
+                                        "containerPort": 8778,
+                                        "name": "jolokia",
+                                        "protocol": "TCP"
+                                    },
+                                    {
+                                        "containerPort": 5672,
+                                        "name": "amqp",
+                                        "protocol": "TCP"
+                                    },
+                                    {
+                                        "containerPort": 1883,
+                                        "name": "mqtt",
+                                        "protocol": "TCP"
+                                    },
+                                    {
+                                        "containerPort": 61613,
+                                        "name": "stomp",
+                                        "protocol": "TCP"
+                                    },
+                                    {
+                                        "containerPort": 61616,
+                                        "name": "all",
+                                        "protocol": "TCP"
+                                    }
+                                ],
+                                "readinessProbe": {
+                                    "exec": {
+                                        "command": [
+                                            "/bin/bash",
+                                            "-c",
+                                            "/opt/amq/bin/readinessProbe.sh"
+                                        ]
+                                    }
+                                },
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/opt/amq/data",
+                                        "name": "application0-amq-pvol"
+                                    },
+                                    {
+                                        "mountPath": "/yacfg_etc",
+                                        "name": "tool-dir"
+                                    }
+                                ]
+                            }
+                        ],
+                        "initContainers": [
+                            {
+                                "command": [
+                                    "/bin/bash",
+                                    "-c",
+                                    "yacfg --help; echo img:quay.io/artemiscloud/activemq-artemis-broker-init:0.2.1 -address:\"user_address_settings:\n  - match: activemq.management#\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n    message_counter_history_day_limit: 10\n    redelivery_delay: 0\n  - match: '#'\n    address_full_policy: PAGE\n    auto_create_addresses: true\n    auto_create_jms_queues: true\n    auto_create_jms_topics: true\n    auto_create_queues: true\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n  - match: 'jms'\n    dead_letter_address: JMSDLQ\"; if [[ ! -z \"user_address_settings:\n  - match: activemq.management#\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n    message_counter_history_day_limit: 10\n    redelivery_delay: 0\n  - match: '#'\n    address_full_policy: PAGE\n    auto_create_addresses: true\n    auto_create_jms_queues: true\n    auto_create_jms_topics: true\n    auto_create_queues: true\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n  - match: 'jms'\n    dead_letter_address: JMSDLQ\" ]]; then yacfg --profile artemis/2.15.0/default_with_user_address_settings.yaml.jinja2  --tune \u003c(echo \"user_address_settings:\n  - match: activemq.management#\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n    message_counter_history_day_limit: 10\n    redelivery_delay: 0\n  - match: '#'\n    address_full_policy: PAGE\n    auto_create_addresses: true\n    auto_create_jms_queues: true\n    auto_create_jms_topics: true\n    auto_create_queues: true\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n  - match: 'jms'\n    dead_letter_address: JMSDLQ\") --output \"/yacfg_etc\"; fi;"
+                                ],
+                                "env": [
+                                    {
+                                        "name": "BROKER_INIT_IMAGE",
+                                        "value": "quay.io/artemiscloud/activemq-artemis-broker-init:0.2.1"
+                                    },
+                                    {
+                                        "name": "ADDRESS_SETTINGS_CONFIG",
+                                        "value": "user_address_settings:\n  - match: activemq.management#\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n    message_counter_history_day_limit: 10\n    redelivery_delay: 0\n  - match: '#'\n    address_full_policy: PAGE\n    auto_create_addresses: true\n    auto_create_jms_queues: true\n    auto_create_jms_topics: true\n    auto_create_queues: true\n    dead_letter_address: DLQ\n    expiry_address: ExpiryQueue\n    max_size_bytes: -1\n  - match: 'jms'\n    dead_letter_address: JMSDLQ"
+                                    },
+                                    {
+                                        "name": "TUNE_PATH",
+                                        "value": "/yacfg_etc"
+                                    }
+                                ],
+                                "image": "quay.io/artemiscloud/activemq-artemis-broker-init:0.2.1",
+                                "name": "activemq-artemis-init",
+                                "volumeMounts": [
+                                    {
+                                        "mountPath": "/yacfg_etc",
+                                        "name": "tool-dir"
+                                    }
+                                ]
+                            }
+                        ],
+                        "terminationGracePeriodSeconds": 60,
+                        "volumes": [
+                            {
+                                "emptyDir": {},
+                                "name": "tool-dir"
+                            }
+                        ]
+                    }
+                },
+                "triggers": [
+                    {
+                        "type": "ConfigChange"
+                    }
+                ],
+                "volumeClaimTemplates": [
+                    {
+                        "apiVersion": "v1",
+                        "kind": "PersistentVolumeClaim",
+                        "metadata": {
+                            "name": "application0-amq-pvol"
+                        },
+                        "spec": {
+                            "accessModes": [
+                                "ReadWriteOnce"
+                            ],
+                            "resources": {
+                                "requests": {
+                                    "storage": "1Gi"
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+}

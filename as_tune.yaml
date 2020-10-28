@@ -1,0 +1,19 @@
+user_address_settings:
+  - match: activemq.management#
+    dead_letter_address: DLQ
+    expiry_address: ExpiryQueue
+    max_size_bytes: -1
+    message_counter_history_day_limit: 10
+    redelivery_delay: 0
+  - match: '#'
+    address_full_policy: PAGE
+    auto_create_addresses: true
+    auto_create_jms_queues: true
+    auto_create_jms_topics: true
+    auto_create_queues: true
+    dead_letter_address: DLQ
+    expiry_address: ExpiryQueue
+    max_size_bytes: -1
+  - match: 'jms'
+    dead_letter_address: JMSDLQ
+
