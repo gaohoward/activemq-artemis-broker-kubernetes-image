@@ -58,7 +58,7 @@ function processRoles() {
   done
 }
 
-AMQ_ROLES="amq,role2;viewer,role4;amq,role5"
+AMQ_ROLES="amq,role2,admin;viewer,role4;amq,role5"
 AMQ_USER_NAMES="howard1,gao,howard"
 AMQ_USER_PASSWORDS="bXlwYXNzd29yZA==,Z2FvcGFzc3dvcmQ=,Z2FvcGFzc3dvcmQ="
 
@@ -74,7 +74,10 @@ actualRoleLines=()
 rm -rf ${tempUserFileName}
 rm -rf ${tempRoleFileName}
 
-while read line; do
+echo "=======IFS is |${IFS}|"
+ORIGINALIFS=${IFS}
+while IFS= read -r line; do
+  echo "Read a line: |${line}|"
   if [[ $line != \#* && $line != "" ]] ; then
     actualUserLines+=("$line")
   else
@@ -82,7 +85,7 @@ while read line; do
   fi
 done < $userFileName
 
-while read line; do
+while IFS= read -r line; do
   if [[ $line != \#* && $line != "" ]] ; then
     actualRoleLines+=("$line")
   else
@@ -90,7 +93,6 @@ while read line; do
   fi
 done < $roleFileName
 
-ORIGINALIFS=$IFS
 IFS=';'
 read -a rolearr <<< "${AMQ_ROLES}"
 IFS=','

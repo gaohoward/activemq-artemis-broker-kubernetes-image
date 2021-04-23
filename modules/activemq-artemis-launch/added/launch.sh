@@ -530,10 +530,12 @@ function processUsers() {
   echo "processing user ${_user} and password ${_password}"
   userExists="false"
   for idx in ${!actualUserLines[@]}; do
+    echo "checking user element: ${idx} : ${actualUserLines[$idx]}"
     OLDIFS=$IFS
     IFS='='; read -a thisuserarr <<< "${actualUserLines[$idx]}"
     IFS=$OLDIFS
     thisuser=${thisuserarr[0]//[[:blank:]]}
+    echo "This user is ${thisuser} and incoming user is ${_user}"
     if [[ ${_user} == "${thisuser}" ]]; then
       echo "the user exists, update its password"
       actualUserLines[$idx]="${_user} = ${_password}"
@@ -585,6 +587,7 @@ function processRoles() {
 }
 
 function configUsersAndRoles {
+  echo "===========ConfigUserRole=========="
   if [[ ${AMQ_USER_NAMES} == "" ]]; then
     echo "No users specified."
     return
@@ -592,11 +595,11 @@ function configUsersAndRoles {
 
   instanceDir=$1
 
-  userFileName=${instanceDir}/etc/artemis-users.properties
-  roleFileName=${instanceDir}/etc/artemis-roles.properties
+  userFileName="${instanceDir}/etc/artemis-users.properties"
+  roleFileName="${instanceDir}/etc/artemis-roles.properties"
 
-  tempRoleFileName="${instanceDir}/etc/${roleFileName}.tmp"
-  tempUserFileName="${instanceDir}/etc/${userFileName}.tmp"
+  tempRoleFileName="${roleFileName}.tmp"
+  tempUserFileName="${userFileName}.tmp"
 
   actualUserLines=()
   actualRoleLines=()
@@ -604,23 +607,44 @@ function configUsersAndRoles {
   rm -rf ${tempUserFileName}
   rm -rf ${tempRoleFileName}
 
-  while read line; do
+  echo "===showing ${userFileName} content"
+  cat ${userFileName}
+  echo "===showing ${roleFileName} content"
+  cat ${roleFileName}
+  echo "===now loading those files..."
+
+  ORIGINALIFS=${IFS}
+  # before reading, append a newline to make sure
+  # that last non-empty line is read in
+  echo "" >> ${userFileName}
+  echo "" >> ${roleFileName}
+
+  echo "===showing ${userFileName} content"
+  cat ${userFileName}
+  echo "===showing ${roleFileName} content"
+  cat ${roleFileName}
+  echo "===now loading those files..."
+
+  while IFS= read -r line; do
+    echo "A user line is read: |${line}|"
     if [[ $line != \#* && $line != "" ]] ; then
+      echo "reading existing user: $line"
       actualUserLines+=("$line")
     else
       echo $line >> $tempUserFileName
     fi
-  done < $userFileName
+  done < ${userFileName}
 
-  while read line; do
+  while IFS= read -r line; do
+    echo "A role line is read: |${line}|"
     if [[ $line != \#* && $line != "" ]] ; then
+      echo "reading existing role: $line"
       actualRoleLines+=("$line")
     else
       echo $line >> $tempRoleFileName
     fi
-  done < $roleFileName
+  done < ${roleFileName}
 
-  ORIGINALIFS=$IFS
   IFS=';'
   read -a rolearr <<< "${AMQ_ROLES}"
   IFS=','
