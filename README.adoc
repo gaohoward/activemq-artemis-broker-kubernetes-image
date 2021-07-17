@@ -2,6 +2,8 @@
 
 NOTE: Extends link:https://github.com/artemiscloud/activemq-artemis-broker-image[ActiveMQ Artemis broker container image]
 
+DEBUG1
+
 # License
 
 See link:LICENSE[LICENSE] file.
