@@ -10,7 +10,7 @@ See link:LICENSE[LICENSE] file.
 
 First you want to install minishift https://docs.openshift.org/latest/minishift/getting-started/installing.html.  Start it up and set the environment
 ```
-$ minishift start
+$ crc start
 $ eval $(minishift oc-env)
 $ eval $(minishift docker-env)
 $ oc login #developer
