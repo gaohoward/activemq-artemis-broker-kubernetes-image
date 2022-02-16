@@ -284,6 +284,10 @@ function injectMetricsPlugin() {
   sed -i "s/^\([[:blank:]]*\)<\\/core>/\1\1<metrics> <plugin class-name=\"org.apache.activemq.artemis.core.server.metrics.plugins.ArtemisPrometheusMetricsPlugin\"\\/> <\\/metrics>\\n\1<\\/core>/" $instanceDir/etc/broker.xml
 }
 
+function checkBrokerProperties() {
+  echo "here you can get the broker properties at $BROKER_PROPERTIES and configure broker with it"
+}
+
 function checkBeforeRun() {
   instanceDir=$1
   if [ "$AMQ_ENABLE_METRICS_PLUGIN" = "true" ]; then
@@ -704,6 +708,11 @@ function runServer() {
     if [ "$1" != "nostart" ]; then
       echo "Running Broker in ${instanceDir}"
       checkBeforeRun ${instanceDir}
+      echo "checking prop $CHECK_PROPERTIES and where is amq home $AMQ_HOME"
+      if [ "$CHECK_PROPERTIES" == "true" ]; then
+        echo "properties are set at $BROKER_PROPERTIES"
+        checkBrokerProperties ${instanceDir}
+      fi
       exec ${instanceDir}/bin/artemis run
     fi
   fi
