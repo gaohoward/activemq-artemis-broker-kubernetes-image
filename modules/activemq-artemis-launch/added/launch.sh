@@ -617,6 +617,9 @@ function configure() {
     if [ "$AMQ_EXTRA_ARGS" ]; then
       AMQ_ARGS="$AMQ_ARGS $AMQ_EXTRA_ARGS"
     fi
+    if [ -n "$LOGGER_PROPERTIES" ]; then
+      AMQ_ARGS="$AMQ_ARGS --logger-properties ${LOGGER_PROPERTIES}"
+    fi
     configureNetworking
     configureSSL
     appendJournalType ${instanceDir}
