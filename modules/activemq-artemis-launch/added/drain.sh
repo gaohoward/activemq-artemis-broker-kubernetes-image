@@ -26,7 +26,6 @@ function waitForJolokia() {
   done
 }
 
-
 endpointsCode=$(curl -s -o /dev/null -w "%{http_code}" -G -k -H "${endpointsAuth}" ${endpointsUrl})
 if [ $endpointsCode -ne 200 ]; then
   echo "[drain.sh] Can't find endpoints with ips status <${endpointsCode}>"
@@ -37,9 +36,15 @@ ENDPOINTS=$(curl -s -X GET -G -k -H "${endpointsAuth}" ${endpointsUrl}"endpoints
 echo "[drain.sh] $ENDPOINTS"
 # we will find out a broker pod's fqdn name which is <pod-name>.<$HEADLESS_SVC_NAME>.<namespace>.svc.<domain-name>
 # https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/
-count=0
+numEndpoints=$(echo $ENDPOINTS | python2 -c "import sys, json; print len(json.load(sys.stdin)['subsets'][0]['addresses'])")
+echo "[drain.sh] size of endpoints $numEndpoints"
+
+count=-1
 foundTarget="false"
 while [ 1 ]; do
+
+  count=$(( count + 1 ))
+
   ip=$(echo $ENDPOINTS | python2 -c "import sys, json; print json.load(sys.stdin)['subsets'][0]['addresses'][${count}]['ip']")
   if [ $? -ne 0 ]; then
     echo "[drain.sh] Can't find ip to scale down to tried ${count} ips"
@@ -53,66 +58,103 @@ while [ 1 ]; do
   fi
   echo "[drain.sh] got podName ${podName} broker ip is ${BROKER_HOST}"
   if [ "$podName" != "$BROKER_HOST" ]; then
-    # found an endpoint pod as a candidate for scaledown target
+
+    echo "[drain.sh] found an endpoint pod as a candidate for scaledown target: $podName"
+
     podNamespace=$(echo $ENDPOINTS | python2 -c "import sys, json; print json.load(sys.stdin)['subsets'][0]['addresses'][${count}]['targetRef']['namespace']")
     if [ $? -ne 0 ]; then
       echo "[drain.sh] Can't find pod namespace to scale down to tried ${count}"
       exit 1
     fi
-    foundTarget="true"
+
+#--- set up drainer pod ---
+    # get host name of target pod
+    IFSP=$IFS
+    IFS=
+    dnsNames=$(nslookup ${ip})
+    echo "[drain.sh] $dnsNames"
+
+    hostNamePrefix="${podName}.${HEADLESS_SVC_NAME}.${podNamespace}.svc."
+    echo "[drain.sh] searching hostname with prefix: $hostNamePrefix"
+
+    while read -r line
+    do
+      IFS=' ' read -ra ARRAY <<< "$line"
+      if [ ${#ARRAY[@]} -gt 0 ]; then
+        hostName=${ARRAY[-1]}
+        if [[ $hostName == ${hostNamePrefix}* ]]; then
+          # remove the last dot
+          case $hostName in *.) hostName=${hostName%"."};; esac
+          echo "[drain.sh] found hostname: $hostName"
+          break
+        fi
+      fi
+    done <<< ${dnsNames}
+    IFS=$IFSP
+
+    if [ -z "$hostName" ]; then
+      echo "[drain.sh] Can't find target host name"
+      exit 1
+    fi
+
+    # DiskStoreUsage, e.g. 0.7971042551709729
+    ATTR_STORAGE_USAGE=$(curl -G -k http://${AMQ_USER}:${AMQ_PASSWORD}@${hostName}:8161/console/jolokia/read/org.apache.activemq.artemis:broker=%22${AMQ_NAME}%22/DiskStoreUsage)
+    if [ $? -ne 0 ]; then
+      echo "[drain.sh] failed to get disk-storage-usage from ${hostName}, skip"
+      continue
+    fi
+    storageUsage=$(echo $ATTR_STORAGE_USAGE | python2 -c "import sys, json; print json.load(sys.stdin)['value']")
+    if [ $? -ne 0 ]; then
+      echo "[drain.sh] failed to extract disk-storage-usage from ${hostName}, skip"
+      continue
+    fi
+    echo "[drain.sh] DiskStoreUsage on ${hostName} is ${storageUsage}"
+
+    # MaxStoreUsage, e.g. 90
+    ATTR_MAX_DISK_USAGE=$(curl -G -k http://${AMQ_USER}:${AMQ_PASSWORD}@${hostName}:8161/console/jolokia/read/org.apache.activemq.artemis:broker=%22${AMQ_NAME}%22/MaxDiskUsage)
+    if [ $? -ne 0 ]; then
+      echo "[drain.sh] failed to get max-disk-usage from ${hostName}, skip"
+      continue
+    fi
+    maxDiskUsage=$(echo $ATTR_MAX_DISK_USAGE | python2 -c "import sys, json; print json.load(sys.stdin)['value']")
+    if [ $? -ne 0 ]; then
+      echo "[drain.sh] failed to extract max-disk-usage from ${hostName}, skip"
+      continue
+    fi
+    echo "[drain.sh] MaxDiskUsage on ${hostName} is ${maxDiskUsage}"
+
+    storageUsage=${storageUsage:2:2}
+    echo "[drain.sh] storage as percentage: $storageUsage"
+
+    if [[ $storageUsage -ge $maxDiskUsage ]]; then
+      echo "[drain.sh] disk usage is below max disk usage. It is a valid target"
+    else
+      echo "[drain.sh] disk usage is full. skip"
+      continue
+    fi
+
+    source /opt/amq/bin/launch.sh nostart
+
+    SCALE_TO_BROKER="${hostName}"
+    echo "[drain.sh] scale down target is: $SCALE_TO_BROKER"
+
+    # Add connector to the pod to scale down to
+    connector="<connector name=\"scaledownconnector\">tcp:\/\/${SCALE_TO_BROKER}:61616<\/connector>"
+    sed -i "/<\/connectors>/ s/.*/${connector}\n&/" ${instanceDir}/etc/broker.xml
+
+    # Remove the acceptors
+    #sed -i -ne "/<acceptors>/ {p;   " -e ":a; n; /<\/acceptors>/ {p; b}; ba}; p" ${instanceDir}/etc/broker.xml
+    acceptor="<acceptor name=\"artemis\">tcp:\/\/${BROKER_HOST}:61616?protocols=CORE<\/acceptor>"
+    sed -i -ne "/<acceptors>/ {p; i $acceptor" -e ":a; n; /<\/acceptors>/ {p; b}; ba}; p" ${instanceDir}/etc/broker.xml
+#---end of drainer pod setup
     break
   fi
-
-  count=$(( count + 1 ))
 done
 
 if [ "$foundTarget" == "false" ]; then
   echo "[drain.sh] Can't find a target to scale down to"
   exit 1
 fi
-
-# get host name of target pod
-IFSP=$IFS
-IFS=
-dnsNames=$(nslookup ${ip})
-echo "[drain.sh] $dnsNames"
-
-hostNamePrefix="${podName}.${HEADLESS_SVC_NAME}.${podNamespace}.svc."
-echo "[drain.sh] searching hostname with prefix: $hostNamePrefix"
-
-while read -r line
-do
-  IFS=' ' read -ra ARRAY <<< "$line"
-  if [ ${#ARRAY[@]} -gt 0 ]; then
-    hostName=${ARRAY[-1]}
-    if [[ $hostName == ${hostNamePrefix}* ]]; then
-      # remove the last dot
-      case $hostName in *.) hostName=${hostName%"."};; esac
-      echo "[drain.sh] found hostname: $hostName"
-      break
-    fi
-  fi
-done <<< ${dnsNames}
-IFS=$IFSP
-
-if [ -z "$hostName" ]; then
-  echo "[drain.sh] Can't find target host name"
-  exit 1
-fi
-
-source /opt/amq/bin/launch.sh nostart
-
-SCALE_TO_BROKER="${hostName}"
-echo "[drain.sh] scale down target is: $SCALE_TO_BROKER"
-
-# Add connector to the pod to scale down to
-connector="<connector name=\"scaledownconnector\">tcp:\/\/${SCALE_TO_BROKER}:61616<\/connector>"
-sed -i "/<\/connectors>/ s/.*/${connector}\n&/" ${instanceDir}/etc/broker.xml
-
-# Remove the acceptors
-#sed -i -ne "/<acceptors>/ {p;   " -e ":a; n; /<\/acceptors>/ {p; b}; ba}; p" ${instanceDir}/etc/broker.xml
-acceptor="<acceptor name=\"artemis\">tcp:\/\/${BROKER_HOST}:61616?protocols=CORE<\/acceptor>"
-sed -i -ne "/<acceptors>/ {p; i $acceptor" -e ":a; n; /<\/acceptors>/ {p; b}; ba}; p" ${instanceDir}/etc/broker.xml
 
 #start the broker and issue the scaledown command to drain the messages.
 ${instanceDir}/bin/artemis-service start
